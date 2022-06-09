@@ -109,6 +109,18 @@ typedef char TCHAR;
 
 
 
+/* Definitions of sector size */
+#if (FF_MAX_SS < FF_MIN_SS)
+#error Wrong sector size configuration
+#endif
+#if FF_MAX_SS == FF_MIN_SS
+#define SS(fs)	((UINT)FF_MAX_SS)	/* Fixed sector size */
+#else
+#define SS(fs)	((fs)->ssize)	/* Variable sector size */
+#endif
+
+
+
 /* Definitions of volume management */
 
 #if FF_MULTI_PARTITION		/* Multiple partition configuration */
