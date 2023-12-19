@@ -1996,7 +1996,9 @@ static void gen_numname (
 		}
 	}
 	do {	/* Append the suffix */
-		dst[j++] = (i < 8) ? ns[i++] : ' ';
+		if (j < 11) {
+			dst[j++] = (i < 8) ? ns[i++] : ' ';
+		}
 	} while (j < 8);
 }
 #endif	/* FF_USE_LFN && !FF_FS_READONLY */
