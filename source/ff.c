@@ -1060,6 +1060,29 @@ static FRESULT move_window (	/* Returns FR_OK or FR_DISK_ERR */
 
 
 #if !FF_FS_READONLY
+#if FF_FS_EXFAT
+/*----------------------------------------*/
+/* Sync any blocks of allocation bitmap   */
+/*----------------------------------------*/
+
+static FRESULT f_sync_bitmap(FATFS* fs) {
+	FRESULT res = FR_OK;
+
+	if (fs->bitdirty) {
+		UINT bitnsect;
+
+		bitnsect = (((fs->n_fatent - 2 + 7) / 8) + SS(fs) - 1) / SS(fs);
+		/* Write the modified sector back to disk */
+		res = disk_write(fs->pdrv, fs->bitcache, fs->bitbase, bitnsect);
+		if (res == FR_OK) {
+			fs->bitdirty = 0;
+		}
+	}
+
+	return res;
+}
+#endif
+
 /*-----------------------------------------------------------------------*/
 /* Synchronize filesystem and data on the storage                        */
 /*-----------------------------------------------------------------------*/
@@ -1070,9 +1093,14 @@ static FRESULT sync_fs (	/* Returns FR_OK or FR_DISK_ERR */
 {
 	FRESULT res;
 
-
 	res = sync_window(fs);
 	if (res == FR_OK) {
+#ifdef FF_FS_EXFAT
+		if (fs->fs_type == FS_EXFAT) {
+			res = f_sync_bitmap(fs);
+			if (res != FR_OK) return res;
+		}
+#endif
 		if (fs->fs_type == FS_FAT32 && fs->fsi_flag == 1) {	/* FAT32: Update FSInfo sector if needed */
 			/* Create FSInfo structure */
 			memset(fs->win, 0, sizeof fs->win);
@@ -1085,6 +1113,7 @@ static FRESULT sync_fs (	/* Returns FR_OK or FR_DISK_ERR */
 			disk_write(fs->pdrv, fs->win, fs->winsect, 1);
 			fs->fsi_flag = 0;
 		}
+
 		/* Make sure that no pending write process in the lower layer */
 		if (disk_ioctl(fs->pdrv, CTRL_SYNC, 0) != RES_OK) res = FR_DISK_ERR;
 	}
@@ -1256,6 +1285,45 @@ static FRESULT put_fat (	/* FR_OK(0):succeeded, !=0:error */
 /* exFAT: Accessing FAT and Allocation Bitmap                            */
 /*-----------------------------------------------------------------------*/
 
+/*-----------------------------------*/
+/* Load Allocation bitmap into cache */
+/*-----------------------------------*/
+
+static FRESULT load_bitmap(FATFS* fs) {
+	FRESULT res;
+	UINT bitnsect;
+
+	bitnsect = (((fs->n_fatent - 2 + 7) / 8) + SS(fs) - 1) / SS(fs);
+	fs->bitcache = (BYTE*)ff_memalloc(bitnsect * SS(fs));
+	if (!fs->bitcache) return FR_NOT_ENOUGH_CORE;
+
+	res = disk_read(fs->pdrv, fs->bitcache, fs->bitbase, bitnsect);
+	if (res != FR_OK) {
+		ff_memfree(fs->bitcache);
+		return res;
+	}
+
+	fs->bitdirty = 0;
+	return res;
+}
+
+/*------------------------------------------*/
+/* Sync and cleanup Allocation Bitmap cache */
+/*------------------------------------------*/
+
+static FRESULT free_bitmap(FATFS* fs) {
+	FRESULT res = FR_OK;
+
+	if (fs->bitcache) {
+		res = f_sync_bitmap(fs);
+		if (res == FR_OK) {
+			ff_memfree(fs->bitcache);
+		}
+	}
+
+	return res;
+}
+
 /*--------------------------------------*/
 /* Find a contiguous free cluster block */
 /*--------------------------------------*/
@@ -1274,27 +1342,24 @@ static DWORD find_bitmap (	/* 0:Not found, 2..:Cluster block found, 0xFFFFFFFF:D
 	clst -= 2;	/* The first bit in the bitmap corresponds to cluster #2 */
 	if (clst >= fs->n_fatent - 2) clst = 0;
 	scl = val = clst; ctr = 0;
+	i = val / 8; bm = 1 << (val % 8);
 	for (;;) {
-		if (move_window(fs, fs->bitbase + val / 8 / SS(fs)) != FR_OK) return 0xFFFFFFFF;
-		i = val / 8 % SS(fs); bm = 1 << (val % 8);
 		do {
-			do {
-				bv = fs->win[i] & bm; bm <<= 1;		/* Get bit value */
-				if (++val >= fs->n_fatent - 2) {	/* Next cluster (with wrap-around) */
-					val = 0; bm = 0; i = SS(fs);
-				}
-				if (bv == 0) {	/* Is it a free cluster? */
-					if (++ctr == ncl) return scl + 2;	/* Check if run length is sufficient for required */
-				} else {
-					scl = val; ctr = 0;		/* Encountered a cluster in-use, restart to scan */
-				}
-				if (val == clst) return 0;	/* All cluster scanned? */
-			} while (bm != 0);
-			bm = 1;
-		} while (++i < SS(fs));
+			bv = fs->bitcache[i] & bm; bm <<= 1;	/* Get bit value */
+			if (++val >= fs->n_fatent - 2) {	/* Next cluster (with wrap-around) */
+				val = 0; bm = 0; i = ~0;
+			}
+			if (bv == 0) {	/* Is it a free cluster? */
+				if (++ctr == ncl) return scl + 2;	/* Check if run length is sufficient for required */
+			} else {
+				scl = val; ctr = 0;		/* Encountered a cluster in-use, restart to scan */
+			}
+			if (val == clst) return 0;	/* All cluster scanned? */
+		} while (bm != 0);
+		bm = 1;
+		++i;
 	}
 }
-
 
 /*----------------------------------------*/
 /* Set/Clear a block of allocation bitmap */
@@ -1309,28 +1374,21 @@ static FRESULT change_bitmap (
 {
 	BYTE bm;
 	UINT i;
-	LBA_t sect;
-
 
 	clst -= 2;	/* The first bit corresponds to cluster #2 */
-	sect = fs->bitbase + clst / 8 / SS(fs);	/* Sector address */
-	i = clst / 8 % SS(fs);					/* Byte offset in the sector */
+	i = clst / 8;						/* Byte offset in the sector */
 	bm = 1 << (clst % 8);					/* Bit mask in the byte */
 	for (;;) {
-		if (move_window(fs, sect++) != FR_OK) return FR_DISK_ERR;
 		do {
-			do {
-				if (bv == (int)((fs->win[i] & bm) != 0)) return FR_INT_ERR;	/* Is the bit expected value? */
-				fs->win[i] ^= bm;	/* Flip the bit */
-				fs->wflag = 1;
-				if (--ncl == 0) return FR_OK;	/* All bits processed? */
-			} while (bm <<= 1);		/* Next bit */
-			bm = 1;
-		} while (++i < SS(fs));		/* Next byte */
-		i = 0;
+			if (bv == (int)((fs->bitcache[i] & bm) != 0)) return FR_INT_ERR;	/* Is the bit expected value? */
+			fs->bitcache[i] ^= bm;	/* Flip the bit */
+			fs->bitdirty = 1;	/* Set the bitmap dirty flag */
+			if (--ncl == 0) return FR_OK;	/* All bits processed? */
+		} while (bm <<= 1);		/* Next bit */
+		bm = 1;
+		++i;
 	}
 }
-
 
 /*---------------------------------------------*/
 /* Fill the first fragment of the FAT chain    */
@@ -3388,6 +3446,7 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 	if (fmt == 1) {
 		QWORD maxlba;
 		DWORD so, cv, bcl, i;
+		FRESULT res;
 
 		for (i = BPB_ZeroedEx; i < BPB_ZeroedEx + 53 && fs->win[i] == 0; i++) ;	/* Check zero filler */
 		if (i < BPB_ZeroedEx + 53) return FR_NO_FILESYSTEM;
@@ -3440,6 +3499,10 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 			if (cv == 0xFFFFFFFF) break;				/* Last link? */
 			if (cv != ++bcl) return FR_NO_FILESYSTEM;	/* Fragmented? */
 		}
+
+		/* Load bitmap into cache */
+		res = load_bitmap(fs);
+		if (res != FR_OK) return res;
 
 #if !FF_FS_READONLY
 		fs->last_clst = fs->free_clst = 0xFFFFFFFF;		/* Initialize cluster allocation information */
@@ -3611,6 +3674,12 @@ FRESULT f_mount (
 	cfs = FatFs[vol];					/* Pointer to fs object */
 
 	if (cfs) {
+#ifdef FF_FS_EXFAT
+		if (cfs->fs_type == FS_EXFAT) {
+			res = free_bitmap(cfs);
+			if (res != FR_OK) return res;
+		}
+#endif
 #if FF_FS_LOCK != 0
 		clear_lock(cfs);
 #endif

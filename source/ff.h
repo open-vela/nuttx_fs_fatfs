@@ -182,6 +182,8 @@ typedef struct {
 	LBA_t	database;		/* Data base sector */
 #if FF_FS_EXFAT
 	LBA_t	bitbase;		/* Allocation bitmap base sector */
+	BYTE	bitdirty;		/* Allocation bitmap dirty flag */
+	BYTE*	bitcache;		/* Allocation bitmap cache */
 #endif
 	LBA_t	winsect;		/* Current sector appearing in the win[] */
 	BYTE	win[FF_MAX_SS];	/* Disk access window for Directory, FAT (and file data at tiny cfg) */
