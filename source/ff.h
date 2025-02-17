@@ -142,6 +142,7 @@ extern const char* VolumeStr[FF_VOLUMES];	/* User defied volume ID */
 /* Filesystem object structure (FATFS) */
 
 typedef struct {
+	BYTE	win[FF_MAX_SS];		/* Disk access window for Directory, FAT (and file data at tiny cfg) */
 	BYTE	fs_type;		/* Filesystem type (0:not mounted) */
 	BYTE	pdrv;			/* Associated physical drive */
 	BYTE	n_fats;			/* Number of FATs (1 or 2) */
@@ -186,7 +187,6 @@ typedef struct {
 	BYTE*	bitcache;		/* Allocation bitmap cache */
 #endif
 	LBA_t	winsect;		/* Current sector appearing in the win[] */
-	BYTE	win[FF_MAX_SS];	/* Disk access window for Directory, FAT (and file data at tiny cfg) */
 } FATFS;
 
 
@@ -218,6 +218,9 @@ typedef struct {
 /* File object structure (FIL) */
 
 typedef struct {
+#if !FF_FS_TINY
+	BYTE	buf[FF_MAX_SS];		/* File private data read/write window */
+#endif
 	FFOBJID	obj;			/* Object identifier (must be the 1st member to detect invalid object pointer) */
 	BYTE	flag;			/* File status flags */
 	BYTE	err;			/* Abort flag (error code) */
@@ -230,9 +233,6 @@ typedef struct {
 #endif
 #if FF_USE_FASTSEEK
 	DWORD*	cltbl;			/* Pointer to the cluster link map table (nulled on open, set by application) */
-#endif
-#if !FF_FS_TINY
-	BYTE	buf[FF_MAX_SS];	/* File private data read/write window */
 #endif
 } FIL;
 
