@@ -4970,7 +4970,7 @@ FRESULT f_unlink (
 )
 {
 	FRESULT res;
-	DIR dj, sdj;
+	DIR dj, sdj = { };
 	DWORD dclst = 0;
 	FATFS *fs;
 #if FF_FS_EXFAT
@@ -5127,7 +5127,7 @@ FRESULT f_mkdir (
 					PRINT_RES(fs, path, sync_fs(fs));
 				}
 			} else {
-				remove_chain(&sobj, dcl, 0);		/* Could not register, remove the allocated cluster */
+				PRINT_RES(fs, path, remove_chain(&sobj, dcl, 0));		/* Could not register, remove the allocated cluster */
 			}
 		}
 		FREE_NAMBUF();
