@@ -3653,6 +3653,14 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 			res = FR_OK;
 		}
 #endif
+	} else {
+		if (obj) {
+			syslog(LOG_ERR, "validate obj->fs:%p, obj->id:%d\n", obj->fs, obj->id);
+			if (obj->fs)
+				syslog(LOG_ERR, "validate obj->fs:%d, obj->id:%d\n", obj->fs->fs_type, obj->fs->id);
+		} else {
+			syslog(LOG_ERR, "validate obj is null\n");
+		}
 	}
 	*rfs = (res == FR_OK) ? obj->fs : 0;	/* Corresponding filesystem object */
 	return res;
