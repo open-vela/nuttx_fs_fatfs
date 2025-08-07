@@ -241,13 +241,13 @@
 #error Static LFN work area cannot be used in thread-safe configuration
 #endif
 #ifdef FS_ERROR_LOG
-#define LEAVE_FF(fs, res)	{ do { if (res != FR_OK) syslog(LOG_ERR, "%d:%d:%s, %d, res:%d\n", fs ? fs->pdrv : -1, fs ? fs->fs_type : 0, __func__, __LINE__, res); unlock_fs(fs, res); return res; } while (0); }
+#define LEAVE_FF(fs, res)	{ do { if (res != FR_OK && res != FR_NO_FILE) syslog(LOG_ERR, "%d:%d:%s, %d, res:%d\n", fs ? fs->pdrv : -1, fs ? fs->fs_type : 0, __func__, __LINE__, res); unlock_fs(fs, res); return res; } while (0); }
 #else
 #define LEAVE_FF(fs, res)	{ unlock_fs(fs, res); return res; }
 #endif
 #else
 #ifdef FS_ERROR_LOG
-#define LEAVE_FF(fs, res)	{ do { if (res != FR_OK) syslog(LOG_ERR, "%d:%d:%s, %d, res:%d\n", fs ? fs->pdrv : -1, fs ? fs->fs_type : 0, __func__, __LINE__, res); return res; } while (0); }
+#define LEAVE_FF(fs, res)	{ do { if (res != FR_OK && res != FR_NO_FILE) syslog(LOG_ERR, "%d:%d:%s, %d, res:%d\n", fs ? fs->pdrv : -1, fs ? fs->fs_type : 0, __func__, __LINE__, res); return res; } while (0); }
 #else
 #define LEAVE_FF(fs, res)	{ return res; }
 #endif
@@ -255,8 +255,8 @@
 
 /* Printf error result */
 #ifdef FS_ERROR_LOG
-#define PRINT_RES(fs, path, ret)	{ do { res = (ret); if (res != FR_OK) syslog(LOG_ERR, "%d:%d:%s:%s, %d, res:%d\n", fs ? fs->pdrv : -1, fs ? fs->fs_type : 0, path != NULL ? path : "", __func__, __LINE__, res); } while (0); }
-#define RETURN_RES(fs, path, ret)	{ do { if (ret != FR_OK) syslog(LOG_ERR, "%d:%d:%s:%s, %d, res:%d\n", fs ? fs->pdrv : -1, fs ? fs->fs_type : 0, path != NULL ? path : "", __func__, __LINE__, ret); return ret;} while (0); }
+#define PRINT_RES(fs, path, ret)	{ do { res = (ret); if (res != FR_OK && res != FR_NO_FILE) syslog(LOG_ERR, "%d:%d:%s:%s, %d, res:%d\n", fs ? fs->pdrv : -1, fs ? fs->fs_type : 0, path != NULL ? path : "", __func__, __LINE__, res); } while (0); }
+#define RETURN_RES(fs, path, ret)	{ do { if (ret != FR_OK && ret != FR_NO_FILE) syslog(LOG_ERR, "%d:%d:%s:%s, %d, res:%d\n", fs ? fs->pdrv : -1, fs ? fs->fs_type : 0, path != NULL ? path : "", __func__, __LINE__, ret); return ret;} while (0); }
 #else
 #define PRINT_RES(fs, path, ret)	{ (res) = (ret); }
 #define RETURN_RES(fs, path, ret)	{ return ret; }
