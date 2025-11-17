@@ -207,7 +207,6 @@ typedef struct {
 	DWORD	c_size;			/* b31-b8:Size of containing directory, b7-b0: Chain status (valid when c_scl != 0) */
 	DWORD	c_ofs;			/* Offset in the containing directory (valid when file object and sclust != 0) */
 #endif
-	TCHAR   path[PATH_MAX + 3];     /* The path of object, file or direcory */
 #if FF_FS_LOCK
 	UINT	lockid;			/* File lock ID origin from 1 (index of file semaphore table Files[]) */
 #endif
