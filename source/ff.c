@@ -1090,7 +1090,7 @@ static FRESULT f_sync_bitmap(FATFS* fs) {
 
 		bitnsect = (((fs->n_fatent - 2 + 7) / 8) + SS(fs) - 1) / SS(fs);
 		/* Write the modified sector back to disk */
-		PRINT_RES(fs, disk_write(fs->pdrv, fs->bitcache, fs->bitbase, bitnsect));
+		PRINT_RES(fs, (FRESULT)disk_write(fs->pdrv, fs->bitcache, fs->bitbase, bitnsect));
 		if (res == FR_OK) {
 			fs->bitdirty = 0;
 		}
@@ -1314,7 +1314,7 @@ static FRESULT load_bitmap(FATFS* fs) {
 	fs->bitcache = (BYTE*)ff_memalloc(bitnsect * SS(fs));
 	if (!fs->bitcache) RETURN_RES(fs, FR_NOT_ENOUGH_CORE);
 
-	PRINT_RES(fs, disk_read(fs->pdrv, fs->bitcache, fs->bitbase, bitnsect));
+	PRINT_RES(fs, (FRESULT)disk_read(fs->pdrv, fs->bitcache, fs->bitbase, bitnsect));
 	if (res != FR_OK) {
 		ff_memfree(fs->bitcache);
 		return res;
